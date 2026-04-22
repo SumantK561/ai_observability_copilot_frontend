@@ -83,18 +83,30 @@ export default function Home() {
   //   };
   // };
 
-  const startLiveLogs = () => {
+  const startLiveLogs = async () => {
     const baseUrl = process.env.NEXT_PUBLIC_API_URL;
+
+    // Wake up backend first
+    await fetch(baseUrl + "/");
 
     const wsUrl = baseUrl?.replace("https", "wss") + "/ws/logs";
 
     const ws = new WebSocket(wsUrl);
 
     ws.onopen = () => {
-      console.log("Connected");
+      console.log("Connected ✅");
+
       setInterval(() => {
         ws.send("[ERROR] Random failure in service");
       }, 3000);
+    };
+
+    ws.onerror = (err) => {
+      console.error("WebSocket error ❌", err);
+    };
+
+    ws.onclose = () => {
+      console.log("WebSocket closed");
     };
 
     ws.onmessage = (event) => {
@@ -102,7 +114,7 @@ export default function Home() {
       setLiveData(parsed);
     };
   };
-  
+
   return (
     <div className="min-h-screen bg-gray-100 p-10">
       <h1 className="text-3xl font-bold mb-6">
