@@ -47,42 +47,62 @@ export default function Home() {
     return "bg-green-500";
   };
 
+  // const startLiveLogs = () => {
+  //   const ws = new WebSocket(`wss:${process.env.NEXT_PUBLIC_API_URL}/ws/logs`);
+
+  //   ws.onopen = () => {
+  //     console.log("Connected to WebSocket");
+
+  //     // simulate log stream
+  //     setInterval(() => {
+  //       ws.send("[ERROR] Random failure in service");
+  //     }, 3000);
+  //   };
+
+  //   ws.onmessage = (event) => {
+  //     try {
+  //       const parsed = JSON.parse(event.data);
+  //       setLiveData(parsed);
+
+  //       // Add new point to chart
+  //       setChartData((prev) => [
+  //         ...prev.slice(-10), // keep last 10 points
+  //         {
+  //           time: new Date().toLocaleTimeString(),
+  //           errors: parsed.metrics?.error_count || 0,
+  //           warnings: parsed.metrics?.warning_count || 0,
+  //         },
+  //       ]);
+  //     } catch {
+  //       console.log("Raw:", event.data);
+  //     }
+  //   };
+
+  //   ws.onclose = () => {
+  //     console.log("Disconnected");
+  //   };
+  // };
+
   const startLiveLogs = () => {
-    const ws = new WebSocket(`wss:${process.env.NEXT_PUBLIC_API_URL}/ws/logs`);
+    const baseUrl = process.env.NEXT_PUBLIC_API_URL;
+
+    const wsUrl = baseUrl?.replace("https", "wss") + "/ws/logs";
+
+    const ws = new WebSocket(wsUrl);
 
     ws.onopen = () => {
-      console.log("Connected to WebSocket");
-
-      // simulate log stream
+      console.log("Connected");
       setInterval(() => {
         ws.send("[ERROR] Random failure in service");
       }, 3000);
     };
 
     ws.onmessage = (event) => {
-      try {
-        const parsed = JSON.parse(event.data);
-        setLiveData(parsed);
-
-        // Add new point to chart
-        setChartData((prev) => [
-          ...prev.slice(-10), // keep last 10 points
-          {
-            time: new Date().toLocaleTimeString(),
-            errors: parsed.metrics?.error_count || 0,
-            warnings: parsed.metrics?.warning_count || 0,
-          },
-        ]);
-      } catch {
-        console.log("Raw:", event.data);
-      }
-    };
-
-    ws.onclose = () => {
-      console.log("Disconnected");
+      const parsed = JSON.parse(event.data);
+      setLiveData(parsed);
     };
   };
-
+  
   return (
     <div className="min-h-screen bg-gray-100 p-10">
       <h1 className="text-3xl font-bold mb-6">
