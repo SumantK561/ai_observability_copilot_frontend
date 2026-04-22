@@ -48,7 +48,7 @@ export default function Home() {
   };
 
   const startLiveLogs = () => {
-    const ws = new WebSocket(`wss:${process.env.NEXT_PUBLIC_API_URL}/analyze/ws/logs`);
+    const ws = new WebSocket(`wss:${process.env.NEXT_PUBLIC_API_URL}/ws/logs`);
 
     ws.onopen = () => {
       console.log("Connected to WebSocket");
