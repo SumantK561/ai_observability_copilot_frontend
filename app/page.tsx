@@ -29,7 +29,7 @@ export default function Home() {
 
     try {
       const res = await axios.post(
-        "http://127.0.0.1:8000/analyze",
+        `${process.env.NEXT_PUBLIC_API_URL}/analyze`,
         formData
       );
       setData(res.data);
@@ -48,7 +48,7 @@ export default function Home() {
   };
 
   const startLiveLogs = () => {
-    const ws = new WebSocket("ws://127.0.0.1:8000/ws/logs");
+    const ws = new WebSocket(`wss:${process.env.NEXT_PUBLIC_API_URL}/analyze/ws/logs`);
 
     ws.onopen = () => {
       console.log("Connected to WebSocket");
