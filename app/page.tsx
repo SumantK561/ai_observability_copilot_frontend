@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import axios from "axios";
 import {
   LineChart,
@@ -15,15 +15,28 @@ import {
 export default function Home() {
   const [file, setFile] = useState<File | null>(null);
   const [data, setData] = useState<any>(null);
-  const [loading, setLoading] = useState(false);
   const [liveData, setLiveData] = useState<any>(null);
   const [chartData, setChartData] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [apiKey, setApiKey] = useState("");
+
+  const wsRef = useRef<WebSocket | null>(null);
+  const intervalRef = useRef<any>(null);
+
+  useEffect(() => {
+    const token = localStorage.getItem("token");
+    if (!token) window.location.href = "/auth/login";
+  }, []);
 
   const upload = async () => {
-    if (!file) return;
+    if (!file || !apiKey) {
+      alert("Upload file & enter API key");
+      return;
+    }
 
     const formData = new FormData();
     formData.append("file", file);
+    formData.append("api_key", apiKey);
 
     setLoading(true);
 
@@ -33,195 +46,119 @@ export default function Home() {
         formData
       );
       setData(res.data);
-    } catch (err) {
-      console.error(err);
+    } catch {
       alert("Error analyzing logs");
     }
 
     setLoading(false);
   };
 
-  const getSeverityColor = (severity: string) => {
-    if (severity === "High") return "bg-red-500";
-    if (severity === "Medium") return "bg-yellow-500";
-    return "bg-green-500";
-  };
-
-  // const startLiveLogs = () => {
-  //   const ws = new WebSocket(`wss:${process.env.NEXT_PUBLIC_API_URL}/ws/logs`);
-
-  //   ws.onopen = () => {
-  //     console.log("Connected to WebSocket");
-
-  //     // simulate log stream
-  //     setInterval(() => {
-  //       ws.send("[ERROR] Random failure in service");
-  //     }, 3000);
-  //   };
-
-  //   ws.onmessage = (event) => {
-  //     try {
-  //       const parsed = JSON.parse(event.data);
-  //       setLiveData(parsed);
-
-  //       // Add new point to chart
-  //       setChartData((prev) => [
-  //         ...prev.slice(-10), // keep last 10 points
-  //         {
-  //           time: new Date().toLocaleTimeString(),
-  //           errors: parsed.metrics?.error_count || 0,
-  //           warnings: parsed.metrics?.warning_count || 0,
-  //         },
-  //       ]);
-  //     } catch {
-  //       console.log("Raw:", event.data);
-  //     }
-  //   };
-
-  //   ws.onclose = () => {
-  //     console.log("Disconnected");
-  //   };
-  // };
-
   const startLiveLogs = async () => {
-    const baseUrl = process.env.NEXT_PUBLIC_API_URL;
+    const base = process.env.NEXT_PUBLIC_API_URL!;
+    await fetch(base);
 
-    // Wake up backend first
-    await fetch(baseUrl + "/");
-
-    const wsUrl = baseUrl?.replace("https", "wss") + "/ws/logs";
-
-    const ws = new WebSocket(wsUrl);
+    const ws = new WebSocket(base.replace("https", "wss") + "/ws/logs");
+    wsRef.current = ws;
 
     ws.onopen = () => {
-      console.log("Connected ✅");
+      ws.send("API_KEY:" + apiKey);
 
-      setInterval(() => {
-        ws.send("[ERROR] Random failure in service");
+      if (intervalRef.current) clearInterval(intervalRef.current);
+
+      intervalRef.current = setInterval(() => {
+        ws.send("[ERROR] Live failure");
       }, 3000);
-    };
-
-    ws.onerror = (err) => {
-      console.error("WebSocket error ❌", err);
-    };
-
-    ws.onclose = () => {
-      console.log("WebSocket closed");
     };
 
     ws.onmessage = (event) => {
       const parsed = JSON.parse(event.data);
       setLiveData(parsed);
+
+      setChartData((prev) => [
+        ...prev.slice(-10),
+        {
+          time: new Date().toLocaleTimeString(),
+          errors: parsed.metrics?.error_count || 0,
+          warnings: parsed.metrics?.warning_count || 0,
+        },
+      ]);
     };
+
+    ws.onclose = () => console.log("WS closed");
   };
 
-  return (
-    <div className="min-h-screen bg-gray-100 p-10">
-      <h1 className="text-3xl font-bold mb-6">
-        AI Observability Copilot 🚀
-      </h1>
+  useEffect(() => {
+    return () => {
+      wsRef.current?.close();
+      if (intervalRef.current) clearInterval(intervalRef.current);
+    };
+  }, []);
 
-      {/* Upload Section */}
+  const getColor = (s: string) =>
+    s === "High" ? "bg-red-500" : s === "Medium" ? "bg-yellow-500" : "bg-green-500";
+
+  return (
+    <div className="p-10 bg-gray-100 min-h-screen">
+      <h1 className="text-3xl font-bold mb-6">AI Observability Copilot 🚀</h1>
+
+      <button
+        onClick={() => {
+          localStorage.removeItem("token");
+          window.location.href = "/auth/login";
+        }}
+        className="bg-red-500 text-white px-3 py-1 rounded mb-4"
+      >
+        Logout
+      </button>
+
       <div className="bg-white p-6 rounded shadow">
+        <input type="file" onChange={(e) => setFile(e.target.files?.[0] || null)} />
         <input
-          type="file"
-          onChange={(e) => setFile(e.target.files?.[0] || null)}
-          className="border p-2"
+          type="password"
+          placeholder="OpenAI API Key"
+          className="border p-2 w-full mt-3"
+          onChange={(e) => setApiKey(e.target.value)}
         />
 
-        <button
-          onClick={upload}
-          className="bg-blue-500 text-white px-4 py-2 ml-2 rounded"
-        >
+        <button onClick={upload} className="bg-blue-500 text-white px-4 py-2 mt-3">
           {loading ? "Analyzing..." : "Analyze"}
         </button>
 
         <button
           onClick={startLiveLogs}
-          className="bg-green-500 text-white px-4 py-2 ml-2 rounded"
+          className="bg-green-500 text-white px-4 py-2 ml-2 mt-3"
         >
           Start Live Logs
         </button>
       </div>
 
-
-      {/* Results */}
       {data && (
-        <div className="mt-8 grid grid-cols-1 md:grid-cols-2 gap-6">
-
-          {/* Severity */}
-          <div className={`p-4 text-white rounded shadow ${getSeverityColor(data.severity)}`}>
-            <h2 className="font-semibold text-lg">Severity</h2>
-            <p className="text-xl">{data.severity}</p>
+        <div className="mt-6 grid grid-cols-2 gap-4">
+          <div className={`p-4 text-white ${getColor(data.severity)}`}>
+            {data.severity}
           </div>
-
-          {/* Root Cause */}
-          <div className="bg-white p-4 rounded shadow">
-            <h2 className="font-semibold text-lg mb-2">Root Cause</h2>
-            <p>{data.root_cause}</p>
-          </div>
-
-          {/* Errors */}
-          <div className="bg-white p-4 rounded shadow">
-            <h2 className="font-semibold text-lg mb-2">Errors</h2>
-            <ul className="list-disc ml-6">
-              {data.errors?.map((e: string, i: number) => (
-                <li key={i}>{e}</li>
-              ))}
-            </ul>
-          </div>
-
-          {/* Suggestions */}
-          <div className="bg-white p-4 rounded shadow">
-            <h2 className="font-semibold text-lg mb-2">Suggestions</h2>
-            <ul className="list-disc ml-6">
-              {data.suggestions?.map((s: string, i: number) => (
-                <li key={i}>{s}</li>
-              ))}
-            </ul>
-          </div>
-
+          <div className="bg-white p-4">{data.root_cause}</div>
         </div>
       )}
+
       {liveData && (
-        <div className="mt-8 border-t pt-6">
-          <h2 className="text-2xl font-bold mb-4">🔴 Live Monitoring</h2>
-
-          <div className={`p-4 text-white rounded ${getSeverityColor(liveData.severity)}`}>
-            Severity: {liveData.severity}
-          </div>
-
-          <div className="bg-white p-4 mt-4 rounded shadow">
-            <h3 className="font-semibold">Root Cause</h3>
-            <p>{liveData.root_cause}</p>
-          </div>
-        </div>
-      )}
-      {liveData?.metrics && (
         <div className="mt-6 bg-black text-white p-4 rounded">
-          <h3 className="text-lg font-bold">📊 System Metrics</h3>
-
           <p>Errors: {liveData.metrics.error_count}</p>
           <p>Warnings: {liveData.metrics.warning_count}</p>
-
-          <p className="mt-2 text-yellow-400">
-            Prediction: {liveData.metrics.prediction}
-          </p>
+          <p>Prediction: {liveData.metrics.prediction}</p>
         </div>
       )}
-      {chartData.length > 0 && (
-        <div className="mt-8 bg-white p-4 rounded shadow">
-          <h2 className="text-xl font-bold mb-4">📈 Error Trend</h2>
 
+      {chartData.length > 0 && (
+        <div className="mt-6 bg-white p-4 rounded">
           <ResponsiveContainer width="100%" height={300}>
             <LineChart data={chartData}>
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis dataKey="time" />
               <YAxis />
               <Tooltip />
-
-              <Line type="monotone" dataKey="errors" />
-              <Line type="monotone" dataKey="warnings" />
+              <Line dataKey="errors" />
+              <Line dataKey="warnings" />
             </LineChart>
           </ResponsiveContainer>
         </div>
